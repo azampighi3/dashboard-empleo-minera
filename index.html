@@ -178,7 +178,7 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   render();
 }));
 
-fetch('empleos.csv').then(r=>r.text()).then(t=>{
+fetch('empleos.csv?t='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(t=>{
   DATA=parseCSV(t);
   stats();
   fillSelect('#fArea','area');fillSelect('#fEstado','estado');fillSelect('#fMatch','match');

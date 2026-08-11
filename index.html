@@ -20,6 +20,12 @@
   .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 16px;display:flex;align-items:baseline;gap:8px;flex:1;min-width:120px}
   .stat .num{font-size:1.5rem;font-weight:700}
   .stat .lbl{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.5px}
+  .tabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--line)}
+  .tab{background:none;border:none;color:var(--muted);font-size:.92rem;font-weight:600;padding:10px 16px;cursor:pointer;border-bottom:2px solid transparent;font-family:inherit}
+  .tab:hover{color:var(--txt)}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .tab .pill{background:var(--panel2);color:var(--muted);border-radius:20px;padding:1px 8px;font-size:.72rem;margin-left:6px}
+  .tab.active .pill{background:var(--accent);color:#04283b}
   .controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
   input[type=search],select{background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:9px 12px;border-radius:8px;font-size:.88rem}
   input[type=search]{flex:1;min-width:200px}
@@ -38,7 +44,8 @@
   .main .cargo{font-weight:600;font-size:.98rem}
   .main .empresa{color:var(--accent);font-size:.85rem}
   .main .notas{color:var(--muted);font-size:.8rem;margin-top:2px}
-  .meta{display:flex;flex-direction:column;gap:2px;font-size:.8rem;color:var(--muted);min-width:150px}
+  .meta{display:flex;flex-direction:column;gap:2px;font-size:.8rem;color:var(--muted);min-width:170px}
+  .meta .cierre{color:#fbbf24}
   .badges{display:flex;flex-direction:column;gap:5px;align-items:flex-end;min-width:110px}
   .badge{font-size:.68rem;padding:3px 9px;border-radius:20px;font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.3px}
   .e-por-postular{background:rgba(56,189,248,.15);color:var(--por-postular)}
@@ -69,10 +76,15 @@
 
 <div class="stats" id="stats"></div>
 
+<div class="tabs">
+  <button class="tab active" data-tab="por-postular" id="tab1">Por postular <span class="pill" id="pill1">0</span></button>
+  <button class="tab" data-tab="postuladas" id="tab2">Mis postulaciones <span class="pill" id="pill2">0</span></button>
+</div>
+
 <div class="controls">
   <input type="search" id="q" placeholder="Buscar empresa, cargo, ubicación…">
-  <select id="fEstado"><option value="">Todos los estados</option></select>
   <select id="fArea"><option value="">Todas las áreas</option></select>
+  <select id="fEstado"><option value="">Todos los estados</option></select>
   <select id="fMatch"><option value="">Todo el match</option></select>
 </div>
 
@@ -82,7 +94,7 @@
 <footer>Datos desde <code>empleos.csv</code>. Actualiza ese archivo en GitHub para refrescar el dashboard.</footer>
 
 <script>
-let DATA=[];
+let DATA=[], TAB='por-postular';
 const $=s=>document.querySelector(s);
 
 function parseCSV(t){
@@ -97,15 +109,30 @@ function parseCSV(t){
 }
 
 const slug=s=>s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z]/g,'-');
+const esStgo=d=>/santiago/i.test(d.ubicacion)?0:1;
+const rankMatch={Alto:0,Medio:1,Bajo:2};
+
+// Orden: Santiago primero, luego más recientes, luego mayor match
+function ordenar(list){
+  return list.sort((a,b)=>{
+    if(esStgo(a)!==esStgo(b)) return esStgo(a)-esStgo(b);
+    if(a.fecha_publicacion!==b.fecha_publicacion) return (b.fecha_publicacion||'').localeCompare(a.fecha_publicacion||'');
+    return (rankMatch[a.match]??9)-(rankMatch[b.match]??9);
+  });
+}
+
+function enTab(d){ return TAB=='por-postular' ? d.estado=='Por postular' : d.estado!='Por postular'; }
 
 function render(){
   const q=$('#q').value.toLowerCase();
   const fe=$('#fEstado').value, fa=$('#fArea').value, fm=$('#fMatch').value;
-  const list=DATA.filter(d=>{
+  let list=DATA.filter(d=>enTab(d)).filter(d=>{
     const hay=(d.empresa+d.cargo+d.ubicacion+d.notas).toLowerCase().includes(q);
     return hay && (!fe||d.estado==fe) && (!fa||d.area==fa) && (!fm||d.match==fm);
   });
-  $('#count').textContent = list.length+' de '+DATA.length+' empleos';
+  list=ordenar(list);
+  const totalTab=DATA.filter(enTab).length;
+  $('#count').textContent = list.length+' de '+totalTab+' empleos';
   $('#list').innerHTML = list.length? list.map(d=>`
     <div class="row s-${slug(d.estado)}">
       <div class="main">
@@ -116,7 +143,8 @@ function render(){
       <div class="meta">
         <span>📍 ${d.ubicacion}</span>
         <span>🏷️ ${d.area}</span>
-        <span>📅 ${d.fecha}</span>
+        <span>🗓️ Publicado: ${d.fecha_publicacion||'—'}</span>
+        ${d.fecha_cierre?`<span class="cierre">⏳ Cierra: ${d.fecha_cierre}</span>`:''}
       </div>
       <div class="badges">
         <span class="badge e-${slug(d.estado)}">${d.estado}</span>
@@ -134,6 +162,8 @@ function stats(){
     ['Match alto',DATA.filter(d=>d.match=='Alto').length]
   ];
   $('#stats').innerHTML=cards.map(([l,n])=>`<div class="stat"><span class="num">${n}</span><span class="lbl">${l}</span></div>`).join('');
+  $('#pill1').textContent=DATA.filter(d=>d.estado=='Por postular').length;
+  $('#pill2').textContent=DATA.filter(d=>d.estado!='Por postular').length;
 }
 
 function fillSelect(id,key){
@@ -141,13 +171,20 @@ function fillSelect(id,key){
   $(id).insertAdjacentHTML('beforeend',vals.map(v=>`<option>${v}</option>`).join(''));
 }
 
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  TAB=t.dataset.tab;
+  render();
+}));
+
 fetch('empleos.csv').then(r=>r.text()).then(t=>{
   DATA=parseCSV(t);
   stats();
-  fillSelect('#fEstado','estado');fillSelect('#fArea','area');fillSelect('#fMatch','match');
+  fillSelect('#fArea','area');fillSelect('#fEstado','estado');fillSelect('#fMatch','match');
   render();
   ['#q','#fEstado','#fArea','#fMatch'].forEach(s=>$(s).addEventListener('input',render));
-}).catch(e=>{$('#list').innerHTML='<div class="empty">No se pudo cargar empleos.csv. Abre esta página en Vercel o GitHub Pages (abrir el HTML directo desde el disco bloquea la carga del CSV).</div>'});
+}).catch(e=>{$('#list').innerHTML='<div class="empty">No se pudo cargar empleos.csv. Abre esta página en GitHub Pages (abrir el HTML directo desde el disco bloquea la carga del CSV).</div>'});
 </script>
 </body>
 </html>

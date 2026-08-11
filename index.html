@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard de Búsqueda de Empleo — Alejandro Zampighi</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#273449; --line:#334155;
+    --txt:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; --accent2:#0ea5e9;
+    --alto:#22c55e; --medio:#eab308; --bajo:#64748b;
+    --postular:#38bdf8; --postulado:#a78bfa; --entrevista:#22c55e; --rechazado:#ef4444; --oferta:#f59e0b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--txt);line-height:1.5;padding:20px;max-width:1200px;margin:0 auto}
+  header{margin-bottom:20px}
+  h1{font-size:1.5rem;margin-bottom:4px}
+  header p{color:var(--muted);font-size:.9rem}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:20px 0}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .stat .num{font-size:1.8rem;font-weight:700}
+  .stat .lbl{color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.5px}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+  input[type=search],select{background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:10px 12px;border-radius:8px;font-size:.9rem}
+  input[type=search]{flex:1;min-width:200px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px}
+  .card .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+  .card h3{font-size:1.05rem;line-height:1.3}
+  .card .empresa{color:var(--accent);font-weight:600;font-size:.9rem}
+  .card .meta{color:var(--muted);font-size:.82rem;display:flex;flex-wrap:wrap;gap:4px 12px}
+  .card .notas{font-size:.85rem;color:var(--txt);opacity:.85}
+  .badge{font-size:.7rem;padding:3px 9px;border-radius:20px;font-weight:600;white-space:nowrap}
+  .estado{text-transform:uppercase;letter-spacing:.3px}
+  .e-por-postular{background:rgba(56,189,248,.15);color:var(--postular)}
+  .e-postulado{background:rgba(167,139,250,.15);color:var(--postulado)}
+  .e-entrevista{background:rgba(34,197,94,.15);color:var(--entrevista)}
+  .e-rechazado{background:rgba(239,68,68,.15);color:var(--rechazado)}
+  .e-oferta{background:rgba(245,158,11,.15);color:var(--oferta)}
+  .m-alto{background:rgba(34,197,94,.15);color:var(--alto)}
+  .m-medio{background:rgba(234,179,8,.15);color:var(--medio)}
+  .m-bajo{background:rgba(100,116,139,.2);color:var(--bajo)}
+  .btn{margin-top:6px;text-align:center;background:var(--accent2);color:#fff;text-decoration:none;padding:9px;border-radius:8px;font-weight:600;font-size:.88rem;transition:.15s}
+  .btn:hover{background:var(--accent)}
+  .empty{color:var(--muted);text-align:center;padding:40px;grid-column:1/-1}
+  footer{margin-top:24px;color:var(--muted);font-size:.78rem;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>Dashboard de Búsqueda de Empleo</h1>
+  <p>Ingeniería Civil Hidráulica · Minería y Gestión de Agua · Alejandro Zampighi</p>
+</header>
+
+<div class="stats" id="stats"></div>
+
+<div class="controls">
+  <input type="search" id="q" placeholder="Buscar empresa, cargo, ubicación…">
+  <select id="fEstado"><option value="">Todos los estados</option></select>
+  <select id="fArea"><option value="">Todas las áreas</option></select>
+  <select id="fMatch"><option value="">Todo el match</option></select>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<footer>Datos desde <code>empleos.csv</code>. Actualiza ese archivo en GitHub para refrescar el dashboard.</footer>
+
+<script>
+let DATA=[];
+const $=s=>document.querySelector(s);
+
+function parseCSV(t){
+  const rows=[];let row=[],cur='',q=false;
+  for(let i=0;i<t.length;i++){const c=t[i];
+    if(q){ if(c=='"'){ if(t[i+1]=='"'){cur+='"';i++} else q=false } else cur+=c }
+    else{ if(c=='"')q=true; else if(c==','){row.push(cur);cur=''} else if(c=='\n'||c=='\r'){ if(cur!==''||row.length){row.push(cur);rows.push(row);row=[];cur=''} } else cur+=c }
+  }
+  if(cur!==''||row.length){row.push(cur);rows.push(row)}
+  const h=rows.shift();
+  return rows.map(r=>Object.fromEntries(h.map((k,i)=>[k.trim(),(r[i]||'').trim()])));
+}
+
+const slug=s=>s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z]/g,'-');
+
+function render(){
+  const q=$('#q').value.toLowerCase();
+  const fe=$('#fEstado').value, fa=$('#fArea').value, fm=$('#fMatch').value;
+  const list=DATA.filter(d=>{
+    const hay=(d.empresa+d.cargo+d.ubicacion+d.notas).toLowerCase().includes(q);
+    return hay && (!fe||d.estado==fe) && (!fa||d.area==fa) && (!fm||d.match==fm);
+  });
+  const grid=$('#grid');
+  grid.innerHTML = list.length? list.map(d=>`
+    <div class="card">
+      <div class="top">
+        <div><h3>${d.cargo}</h3><div class="empresa">${d.empresa}</div></div>
+        <span class="badge estado e-${slug(d.estado)}">${d.estado}</span>
+      </div>
+      <div class="meta"><span>📍 ${d.ubicacion}</span><span>🏷️ ${d.area}</span><span>📅 ${d.fecha}</span></div>
+      <div class="meta"><span class="badge m-${slug(d.match)}">Match ${d.match}</span></div>
+      ${d.notas?`<div class="notas">${d.notas}</div>`:''}
+      <a class="btn" href="${d.link}" target="_blank" rel="noopener">Ir a postular →</a>
+    </div>`).join('') : '<div class="empty">No hay ofertas que coincidan con el filtro.</div>';
+}
+
+function stats(){
+  const by=k=>DATA.filter(d=>d.estado==k).length;
+  const cards=[
+    ['Total',DATA.length],['Por postular',by('Por postular')],
+    ['Postulado',by('Postulado')],['Entrevista',by('Entrevista')],
+    ['Match alto',DATA.filter(d=>d.match=='Alto').length]
+  ];
+  $('#stats').innerHTML=cards.map(([l,n])=>`<div class="stat"><div class="num">${n}</div><div class="lbl">${l}</div></div>`).join('');
+}
+
+function fillSelect(id,key){
+  const vals=[...new Set(DATA.map(d=>d[key]))].filter(Boolean).sort();
+  $(id).insertAdjacentHTML('beforeend',vals.map(v=>`<option>${v}</option>`).join(''));
+}
+
+fetch('empleos.csv').then(r=>r.text()).then(t=>{
+  DATA=parseCSV(t);
+  stats();
+  fillSelect('#fEstado','estado');fillSelect('#fArea','area');fillSelect('#fMatch','match');
+  render();
+  ['#q','#fEstado','#fArea','#fMatch'].forEach(s=>$(s).addEventListener('input',render));
+}).catch(e=>{$('#grid').innerHTML='<div class="empty">No se pudo cargar empleos.csv. Abre esta página con un servidor local o en Vercel (abrir el HTML directo desde el disco bloquea la carga del CSV).</div>'});
+</script>
+</body>
+</html>

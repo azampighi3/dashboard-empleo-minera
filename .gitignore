@@ -11,3 +11,7 @@ desktop.ini
 *.tmp
 *.log
 preview.png
+
+# Credenciales - nunca subir
+github-token.txt
+*.token
